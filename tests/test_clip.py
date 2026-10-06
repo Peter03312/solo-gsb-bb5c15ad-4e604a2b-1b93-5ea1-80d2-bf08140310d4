@@ -178,6 +178,61 @@ class ClipTestCase(unittest.TestCase):
 
     # ------------------------------------------------------------ 基本裁剪
 
+    def test_clip_current_timeline_utc_window_scenario(self):
+        """回归：UTC 半开窗口 [1700000004000,1700000019000) 查询当前时间轴，
+        可定位且与窗口相交的 CAP-0001 必须按既有裁剪规则返回。
+
+        锚点 (1000,1700000000000)-(61000,1700000060500)：声段本地 [5000,20000]
+        映射为 UTC [1700000004033,1700000019158]，与窗口相交。
+        本地起点：首个 utc>=1700000004000 的本地毫秒是 5000（utc=1700000004033）；
+        本地终点：首个 utc>=1700000019000 的本地毫秒是 19843（utc=1700000019000）。
+        """
+        self.make_device("D1", "录音笔-甲")
+        self.add_anchor("D1", 1000, 1700000000000)
+        self.add_anchor("D1", 61000, 1700000060500)
+        self.submit("CAP-0001", "D1", 5000, 20000)
+
+        status, body = self.clip(1700000004000, 1700000019000)
+        self.assertEqual(status, 200)
+        self.assertEqual(body["source"], "current")
+        self.assertIsNone(body["version_no"])
+        self.assertEqual(body["start_ms"], 1700000004000)
+        self.assertEqual(body["end_ms"], 1700000019000)
+        self.assertEqual(body["segments"], [
+            {"capture_id": "CAP-0001", "device_id": "D1", "cycle_id": "default",
+             "local_start_ms": 5000, "local_end_ms": 19843,
+             "utc_start_ms": 1700000004033, "utc_end_ms": 1700000019000},
+        ])
+        self.assertEqual(body["segment_count"], len(body["segments"]))
+
+        # 无相交仍不返回：窗口与声段 UTC 范围边界相接（半开语义）
+        status, body = self.clip(1700000019158, 1700000020000)
+        self.assertEqual((status, body["segments"], body["segment_count"]),
+                         (200, [], 0))
+        status, body = self.clip(1700000000000, 1700000004033)
+        self.assertEqual((status, body["segments"], body["segment_count"]),
+                         (200, [], 0))
+
+        # 不可定位声段（超出锚点覆盖）仍不返回，即使窗口极大
+        self.submit("CAP-0002", "D1", 90000, 95000)
+        status, body = self.clip(0, MAX_INT64)
+        self.assertEqual(status, 200)
+        self.assertEqual([s["capture_id"] for s in body["segments"]], ["CAP-0001"])
+
+        # 裁后零长度仍不返回：窗口只覆盖声段末端映射不到的边界点
+        # （窗口 [1700000019158,1700000019159) 与声段边界相接，无相交）
+        status, body = self.clip(1700000019158, 1700000019159)
+        self.assertEqual((status, body["segments"]), (200, []))
+
+        # 非法窗口继续按现有错误契约拒绝
+        status, body = self.clip(1700000019000, 1700000004000)
+        self.assertEqual((status, body["error"]["code"]), (400, "invalid_range"))
+        status, body = self.clip(1700000004000, 1700000004000)
+        self.assertEqual((status, body["error"]["code"]), (400, "invalid_range"))
+        status, body = self.req("POST", "/segments/clip",
+                                {"start_ms": 1700000004000.5, "end_ms": 1700000019000})
+        self.assertEqual((status, body["error"]["code"]), (400, "invalid_time"))
+
     def test_basic_clip_identity_device(self):
         """恒等映射设备：窗口内裁剪、窗口覆盖整段、声段被窗口包含。"""
         self.make_identity_device("D1")
