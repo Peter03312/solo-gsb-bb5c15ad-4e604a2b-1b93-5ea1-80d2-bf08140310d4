@@ -462,6 +462,13 @@ curl -s -X POST $BASE/segments/clip -H 'Content-Type: application/json' \
   -d '{"start_ms":0,"end_ms":1000,"version_no":999}'
 ```
 
+报告窗口 `[1700000004000,1700000019000)` 的最小可运行复现（自动建设备/锚点/声段并
+验证相交返回、无相交/不可定位不返回、非法窗口拒绝）：
+
+```bash
+python3 examples/clip_example.py http://localhost:8000
+```
+
 完整演示脚本（覆盖幂等、冲突、越界、排序、版本差异）：
 
 ```bash
@@ -553,7 +560,9 @@ tests/test_seal.py     # 端到端测试（周期封存 + 旧库默认未封存�
 tests/test_reassign.py # 端到端测试（周期归属批量纠正 + 并发一致性）
 tests/test_coverage.py # 端到端测试（覆盖审计 + 历史冻结 + 并发一致性）
 tests/test_clip.py     # 端到端测试（回放裁剪 + 历史冻结 + 旧版快照 + 并发一致性）
+tests/test_clip_regression.py # 回归测试（报告窗口当前时间轴裁剪 + 排除/拒绝规则）
 examples/demo.sh       # curl 调用示例（含周期、封存、批量纠正、覆盖审计与回放裁剪用法）
 examples/client.py     # Python 客户端示例（含周期、封存、批量纠正、覆盖审计与回放裁剪用法）
+examples/clip_example.py # 回放裁剪报告窗口最小复现示例
 Dockerfile / docker-compose.yml
 ```
